@@ -14,6 +14,12 @@ import openai
 import anthropic
 from markitdown import MarkItDown
 from app.document_processing import write_upload_to_temp
+from app.prompts import (
+    build_analysis_prompt,
+    build_chat_prompt,
+    build_considerations_prompt,
+    build_key_points_prompt,
+)
 from config import get_api_keys
 
 def init_qdrant():
@@ -418,25 +424,13 @@ def main():
                         # Ensure OpenAI API key is set
                         os.environ['OPENAI_API_KEY'] = st.session_state.openai_api_key
                         
-                        # Combine predefined and user queries
-                        if analysis_type != "Custom Query":
-                            combined_query = f"""
-                            Using the uploaded document as reference:
-                            
-                            Primary Analysis Task: {analysis_configs[analysis_type]['query']}
-                            Focus Areas: {', '.join(analysis_configs[analysis_type]['agents'])}
-                            
-                            Please search the knowledge base and provide specific references from the document.
-                            """
-                        else:
-                            combined_query = f"""
-                            Using the uploaded document as reference:
-                            
-                            {user_query}
-                            
-                            Please search the knowledge base and provide specific references from the document.
-                            Focus Areas: {', '.join(analysis_configs[analysis_type]['agents'])}
-                            """
+                        combined_query = build_analysis_prompt(
+                            analysis_task=analysis_configs[analysis_type]["query"],
+                            focus_agents=analysis_configs[analysis_type]["agents"],
+                            user_query=user_query
+                            if analysis_type == "Custom Query"
+                            else None,
+                        )
 
                         response = st.session_state.legal_team.run(combined_query)
                         st.session_state.analysis_response = response
@@ -458,11 +452,10 @@ def main():
                         
                         with st.session_state.analysis_tabs[1]:
                             key_points_response = st.session_state.legal_team.run(
-                                f"""Based on this previous analysis:    
-                                {response.content}
-                                
-                                Please summarize the key points in bullet points.
-                                Focus on insights from: {', '.join(analysis_configs[analysis_type]['agents'])}"""
+                                build_key_points_prompt(
+                                    previous_analysis=response.content,
+                                    focus_agents=analysis_configs[analysis_type]["agents"],
+                                )
                             )
                             st.session_state.key_points_response = key_points_response
                             if key_points_response.content:
@@ -474,11 +467,10 @@ def main():
                         
                         with st.session_state.analysis_tabs[2]:
                             recommendations_response = st.session_state.legal_team.run(
-                                f"""Based on this previous analysis:
-                                {response.content}
-                                
-                                What are your key recommendations based on the analysis, the best course of action?
-                                Provide specific recommendations from: {', '.join(analysis_configs[analysis_type]['agents'])}"""
+                                build_considerations_prompt(
+                                    previous_analysis=response.content,
+                                    focus_agents=analysis_configs[analysis_type]["agents"],
+                                )
                             )
                             st.session_state.recommendations_response = recommendations_response
                             if recommendations_response.content:
@@ -527,22 +519,12 @@ def main():
                 # Get AI response
                 with st.chat_message("assistant"):
                     with st.spinner("Thinking..."):
-                        # Create context from previous analysis
-                        context = f"""You are a helpful legal assistant. Use the following analysis to answer the user's question.
-                        Do not make up information - only use what's provided in the context below.
-                        
-                        Analysis Context:
-                        {st.session_state.analysis_response.content if st.session_state.analysis_response and hasattr(st.session_state.analysis_response, 'content') else ''}
-                        
-                        Key Points:
-                        {st.session_state.key_points_response.content if st.session_state.key_points_response and hasattr(st.session_state.key_points_response, 'content') else ''}
-                        
-                        Recommendations:
-                        {st.session_state.recommendations_response.content if st.session_state.recommendations_response and hasattr(st.session_state.recommendations_response, 'content') else ''}
-                        
-                        Question: {prompt}
-                        
-                        Please provide a clear and concise answer based only on the information above."""
+                        context = build_chat_prompt(
+                            question=prompt,
+                            analysis_context=st.session_state.analysis_response.content if st.session_state.analysis_response and hasattr(st.session_state.analysis_response, 'content') else '',
+                            key_points=st.session_state.key_points_response.content if st.session_state.key_points_response and hasattr(st.session_state.key_points_response, 'content') else '',
+                            considerations=st.session_state.recommendations_response.content if st.session_state.recommendations_response and hasattr(st.session_state.recommendations_response, 'content') else '',
+                        )
                         
                         chat_response = st.session_state.chat_model.chat(context)
                         response_content = chat_response.content if hasattr(chat_response, 'content') else str(chat_response)

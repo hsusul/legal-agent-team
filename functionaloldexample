@@ -338,8 +338,8 @@ def main():
                                 f"""Based on this previous analysis:
                                 {response.content}
                                 
-                                What are your key recommendations based on the analysis, the best course of action?
-                                Provide specific recommendations from: {', '.join(analysis_configs[analysis_type]['agents'])}"""
+                                What considerations and questions should a qualified legal professional review?
+                                Provide specific research notes from: {', '.join(analysis_configs[analysis_type]['agents'])}"""
                             )
                             if recommendations_response.content:
                                 st.markdown(recommendations_response.content)
