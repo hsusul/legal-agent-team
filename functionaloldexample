@@ -103,7 +103,7 @@ def main():
 
         qdrant_url = st.text_input(
             "Qdrant URL",
-            value=st.session_state.qdrant_url if st.session_state.qdrant_url else "https://f499085c-b4bf-4bda-a9a5-227f62a9ca20.us-west-2-0.aws.cloud.qdrant.io:6333",
+            value=st.session_state.qdrant_url if st.session_state.qdrant_url else "",
             help="Enter your Qdrant instance URL"
         )
         if qdrant_url:
@@ -354,4 +354,4 @@ def main():
         st.info("Please upload a legal document to begin analysis")
 
 if __name__ == "__main__":
-    main() 
+    main()

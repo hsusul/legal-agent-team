@@ -13,6 +13,7 @@ import os
 import openai
 import anthropic
 from markitdown import MarkItDown
+from config import get_api_keys
 
 def init_qdrant():
     """Initialize Qdrant vector database"""
@@ -106,13 +107,13 @@ def process_document(uploaded_file, vector_db: Qdrant):
 def init_session_state():
     """Initialize session state variables"""
     if 'openai_api_key' not in st.session_state:
-        st.session_state.openai_api_key = None
+        st.session_state.openai_api_key = API_KEYS.get('openai')
     if 'anthropic_api_key' not in st.session_state:
-        st.session_state.anthropic_api_key = None
+        st.session_state.anthropic_api_key = API_KEYS.get('anthropic')
     if 'qdrant_api_key' not in st.session_state:
-        st.session_state.qdrant_api_key = None
+        st.session_state.qdrant_api_key = API_KEYS.get('qdrant')
     if 'qdrant_url' not in st.session_state:
-        st.session_state.qdrant_url = None
+        st.session_state.qdrant_url = API_KEYS.get('qdrant_url')
     if 'vector_db' not in st.session_state:
         st.session_state.vector_db = None
     if 'legal_team' not in st.session_state:
@@ -129,15 +130,7 @@ def init_session_state():
         st.session_state.key_points_response = None
     if 'recommendations_response' not in st.session_state:
         st.session_state.recommendations_response = None
-    if 'password_entered' not in st.session_state:
-        st.session_state.password_entered = False
-
-# Get API keys from environment/secrets
-API_KEYS = {
-    'openai': os.environ.get('OPENAI_KEY'),
-    'anthropic': os.environ.get('ANTHROPIC_KEY'),
-    'qdrant': os.environ.get('QDRANT_KEY')
-}
+API_KEYS = get_api_keys()
 
 def main():
     st.set_page_config(page_title="Legal Document Analyzer", layout="wide")
@@ -148,19 +141,7 @@ def main():
 
     with st.sidebar:
         st.header("🔑 API Configuration")
-        
-        # Add password input for autofill
-        password = st.text_input("Enter password to autofill API keys", type="password")
-        if password == "Eromtej12" and not st.session_state.password_entered:
-            if all(API_KEYS.values()):
-                st.session_state.openai_api_key = API_KEYS['openai']
-                st.session_state.anthropic_api_key = API_KEYS['anthropic']
-                st.session_state.qdrant_api_key = API_KEYS['qdrant']
-                st.session_state.password_entered = True
-                st.success("API keys autofilled successfully!")
-            else:
-                st.error("Please check your environment variables/secrets")
-   
+
         openai_key = st.text_input(
             "OpenAI API Key",
             type="password",
@@ -190,7 +171,7 @@ def main():
 
         qdrant_url = st.text_input(
             "Qdrant URL",
-            value=st.session_state.qdrant_url if st.session_state.qdrant_url else "https://2add81f2-7d7c-4617-816c-dbb1b7a85539.europe-west3-0.gcp.cloud.qdrant.io:6333",
+            value=st.session_state.qdrant_url if st.session_state.qdrant_url else "",
             help="Enter your Qdrant instance URL"
         )
         if qdrant_url:
@@ -579,4 +560,4 @@ def main():
         st.info("Please upload a legal document to begin analysis")
 
 if __name__ == "__main__":
-    main() 
+    main()

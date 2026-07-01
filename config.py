@@ -1,19 +1,28 @@
-
 import os
 
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
+
 def get_api_keys():
-    """Get API keys from environment variables"""
+    """Get app configuration from environment variables."""
     keys = {
-        'openai': os.environ.get('OPENAI_KEY'),
-        'anthropic': os.environ.get('ANTHROPIC_KEY'),
-        'qdrant': os.environ.get('QDRANT_KEY')
+        "openai": os.environ.get("OPENAI_API_KEY"),
+        "anthropic": os.environ.get("ANTHROPIC_API_KEY"),
+        "qdrant": os.environ.get("QDRANT_API_KEY"),
+        "qdrant_url": os.environ.get("QDRANT_URL"),
+        "app_password": os.environ.get("APP_PASSWORD")
+        or os.environ.get("APP_ACCESS_PASSWORD"),
     }
-    
+
     # Check if we're in deployment environment
-    if os.environ.get('REPLIT_DEPLOYMENT') and not any(keys.values()):
+    if os.environ.get("REPLIT_DEPLOYMENT") and not any(keys.values()):
         raise ValueError("API keys not found in deployment environment")
-        
+
     return keys
+
 
 if __name__ == "__main__":
     keys = get_api_keys()

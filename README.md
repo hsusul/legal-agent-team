@@ -2,6 +2,8 @@
 
 A Streamlit application that simulates a full-service legal team using multiple AI agents to analyze legal documents and provide comprehensive legal insights. Each agent represents a different legal specialist role, from research and contract analysis to strategic planning, working together to provide thorough legal analysis and recommendations.
 
+This project began from the original AI Legal Agent Team example in `awesome-llm-apps` and is being rebuilt as an independent portfolio project.
+
 ## Features
 
 - **Multi-Format Document Support**
@@ -40,17 +42,33 @@ A Streamlit application that simulates a full-service legal team using multiple 
 
 1. **Setup Environment**
    ```bash
-   # Clone the repository
-   git clone https://github.com/Shubhamsaboo/awesome-llm-apps.git
-   cd ai_legal_agent_team
+   # Clone or fork this repository
+   git clone <your-repo-url>
+   cd ai-legal-agent-team
    
    # Install dependencies
    pip install -r requirements.txt
    ```
 
-2. **Configure API Keys**
+2. **Configure Environment Variables**
    - Get OpenAI API key from [OpenAI Platform](https://platform.openai.com)
+   - Get Anthropic API key from [Anthropic Console](https://console.anthropic.com) if using Claude models
    - Get Qdrant API key and URL from [Qdrant Cloud](https://cloud.qdrant.io)
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Fill in the values you plan to use:
+
+   ```bash
+   OPENAI_API_KEY=
+   ANTHROPIC_API_KEY=
+   QDRANT_URL=
+   QDRANT_API_KEY=
+   ```
+
+   The app loads these values from `.env` for local development. Do not commit real secrets.
 
 3. **Run the Application**
    ```bash
