@@ -13,6 +13,7 @@ import os
 import openai
 import anthropic
 from markitdown import MarkItDown
+from app.document_processing import write_upload_to_temp
 from config import get_api_keys
 
 def init_qdrant():
@@ -42,10 +43,8 @@ def process_document(uploaded_file, vector_db: Qdrant):
     os.environ['OPENAI_API_KEY'] = st.session_state.openai_api_key
     
     with tempfile.TemporaryDirectory() as temp_dir:
-        temp_file_path = os.path.join(temp_dir, uploaded_file.name)
         try:
-            with open(temp_file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+            temp_file_path = write_upload_to_temp(uploaded_file, temp_dir)
         except Exception as e:
             raise Exception(f"Error saving uploaded file: {str(e)}")
 
@@ -57,7 +56,7 @@ def process_document(uploaded_file, vector_db: Qdrant):
             )
 
             # Check if file is PDF
-            if uploaded_file.name.lower().endswith('.pdf'):
+            if temp_file_path.suffix.lower() == '.pdf':
                 try:
                     knowledge_base = PDFKnowledgeBase(
                         path=temp_dir, 
