@@ -8,6 +8,7 @@ load_dotenv()
 
 def get_api_keys():
     """Get app configuration from environment variables."""
+    app_mode = os.environ.get("APP_MODE", "live").lower()
     keys = {
         "openai": os.environ.get("OPENAI_API_KEY"),
         "anthropic": os.environ.get("ANTHROPIC_API_KEY"),
@@ -15,6 +16,7 @@ def get_api_keys():
         "qdrant_url": os.environ.get("QDRANT_URL"),
         "app_password": os.environ.get("APP_PASSWORD")
         or os.environ.get("APP_ACCESS_PASSWORD"),
+        "app_mode": "mock" if app_mode == "mock" else "live",
     }
 
     # Check if we're in deployment environment

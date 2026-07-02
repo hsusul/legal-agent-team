@@ -14,6 +14,7 @@ import openai
 import anthropic
 from markitdown import MarkItDown
 from app.document_processing import write_upload_to_temp
+from app.mock_services import MockChatModel, MockLegalTeam, process_mock_document
 from app.prompts import (
     build_analysis_prompt,
     build_chat_prompt,
@@ -40,6 +41,9 @@ def init_qdrant():
 
 def process_document(uploaded_file, vector_db: Qdrant):
     """Process document, create embeddings and store in Qdrant vector database"""
+    if is_mock_mode():
+        return process_mock_document(uploaded_file)
+
     if not st.session_state.openai_api_key:
         raise ValueError("OpenAI API key not provided")
         
@@ -137,6 +141,10 @@ def init_session_state():
         st.session_state.recommendations_response = None
 API_KEYS = get_api_keys()
 
+
+def is_mock_mode():
+    return API_KEYS.get("app_mode") == "mock"
+
 def main():
     st.set_page_config(page_title="Legal Document Analyzer", layout="wide")
     
@@ -146,6 +154,8 @@ def main():
 
     with st.sidebar:
         st.header("🔑 API Configuration")
+        if is_mock_mode():
+            st.info("Mock mode is active. External AI, vector DB, and search calls are disabled.")
 
         openai_key = st.text_input(
             "OpenAI API Key",
@@ -182,7 +192,7 @@ def main():
         if qdrant_url:
             st.session_state.qdrant_url = qdrant_url
 
-        if all([st.session_state.qdrant_api_key, st.session_state.qdrant_url]):
+        if not is_mock_mode() and all([st.session_state.qdrant_api_key, st.session_state.qdrant_url]):
             try:
                 if not st.session_state.vector_db:
                     st.session_state.vector_db = init_qdrant()
@@ -208,7 +218,9 @@ def main():
 
         st.divider()
 
-        if all([st.session_state.openai_api_key, st.session_state.vector_db]):
+        can_upload_document = is_mock_mode() or all([st.session_state.openai_api_key, st.session_state.vector_db])
+
+        if can_upload_document:
             st.header("📄 Document Upload")
             uploaded_file = st.file_uploader(
                 "Upload Legal Document", 
@@ -220,123 +232,128 @@ def main():
                     try:
                         knowledge_base = process_document(uploaded_file, st.session_state.vector_db)
                         st.session_state.knowledge_base = knowledge_base
-                        
-                        # Validate API keys based on selected model
-                        if st.session_state.selected_model == "claude-3-5-sonnet" and not st.session_state.anthropic_api_key:
-                            st.error("Anthropic API key is required to use Claude models")
-                            return
-                        elif st.session_state.selected_model in ["o1-mini", "gpt-4o"] and not st.session_state.openai_api_key:
-                            st.error("OpenAI API key is required to use OpenAI models")
-                            return
 
-                        # Configure model based on selection
-                        if st.session_state.selected_model == "claude-3-5-sonnet":
-                            if not st.session_state.anthropic_api_key:
+                        if is_mock_mode():
+                            st.session_state.legal_team = MockLegalTeam(knowledge_base)
+                            st.session_state.chat_model = MockChatModel(knowledge_base)
+                            st.success("✅ Document processed in mock mode!")
+                        else:
+                            # Validate API keys based on selected model
+                            if st.session_state.selected_model == "claude-3-5-sonnet" and not st.session_state.anthropic_api_key:
                                 st.error("Anthropic API key is required to use Claude models")
                                 return
-                            model = Claude(
-                                model=st.session_state.selected_model,
-                                api_key=st.session_state.anthropic_api_key
-                            )
-                        else:
-                            if not st.session_state.openai_api_key:
+                            elif st.session_state.selected_model in ["o1-mini", "gpt-4o"] and not st.session_state.openai_api_key:
                                 st.error("OpenAI API key is required to use OpenAI models")
                                 return
-                            model = OpenAIChat(
-                                model=st.session_state.selected_model,
-                                api_key=st.session_state.openai_api_key
+
+                            # Configure model based on selection
+                            if st.session_state.selected_model == "claude-3-5-sonnet":
+                                if not st.session_state.anthropic_api_key:
+                                    st.error("Anthropic API key is required to use Claude models")
+                                    return
+                                model = Claude(
+                                    model=st.session_state.selected_model,
+                                    api_key=st.session_state.anthropic_api_key
+                                )
+                            else:
+                                if not st.session_state.openai_api_key:
+                                    st.error("OpenAI API key is required to use OpenAI models")
+                                    return
+                                model = OpenAIChat(
+                                    model=st.session_state.selected_model,
+                                    api_key=st.session_state.openai_api_key
+                                )
+                        
+                            # Initialize agents
+                            legal_researcher = Agent(
+                                name="Legal Researcher",
+                                role="Legal Research Specialist",
+                                model=model,
+                                tools=[DuckDuckGo()],
+                                knowledge=st.session_state.knowledge_base,
+                                search_knowledge=True,
+                                instructions=[
+                                    "Use DuckDuckGo to search relevant legal databases and external sources for applicable cases and precedents.",
+                                    "Accurately cite all sources used.",
+                                    "Provide concise summaries of findings.",
+                                    "Reference specific sections of the uploaded document when relevant.",
+                                    "You are giving final reports, do not give partial responses and ask follow up questions.",
+                                    "Do not create your own sources, use only those provided by DuckDuckGo or the knowledge base."
+                                ],
+                                show_tool_calls=True,
+                                markdown=True
+                            )
+
+                            contract_analyst = Agent(
+                                name="Contract Analyst",
+                                role="Contract Analysis Specialist",
+                                model=model,
+                                knowledge=knowledge_base,
+                                search_knowledge=True,
+                                instructions=[
+                                    "Thoroughly review the contract to identify key terms, obligations, and potential issues.",
+                                    "Reference specific clauses from the uploaded document.",
+                                    "You are giving final reports, do not give partial responses and ask follow up questions.",
+                                    "Summarize findings in a clear and concise manner."
+                                ],
+                                markdown=True
+                            )
+
+                            legal_strategist = Agent(
+                                name="Legal Strategist",
+                                role="Legal Strategy Specialist",
+                                model=model,
+                                knowledge=knowledge_base,
+                                search_knowledge=True,
+                                instructions=[
+                                    "Develop strategic legal recommendations based on the document analysis.",
+                                    "Provide actionable steps considering identified risks and opportunities.",
+                                    "You are giving final reports, do not give partial responses and ask follow up questions.",
+                                    "Ensure recommendations are supported by evidence from the document."
+                                ],
+                                markdown=True
+                            )
+
+                            # Add new Legal Chat Agent
+                            legal_chat_agent = Agent(
+                                name="Legal Chat Assistant",
+                                role="Interactive Legal Consultant",
+                                model=model,
+                                tools=[DuckDuckGo()],
+                                knowledge=knowledge_base,
+                                search_knowledge=True,
+                                instructions=[
+                                    "Engage in interactive discussions about the analyzed document and its legal implications.",
+                                    "Reference specific parts of the document and previous analysis when answering questions.",
+                                    "Use DuckDuckGo to search for additional legal information when needed.",
+                                    "Maintain context of the conversation and previous analyses.",
+                                    "Provide clear, accurate responses with citations when applicable.",
+                                    "Ask for clarification if a user's question is ambiguous."
+                                ],
+                                show_tool_calls=True,
+                                markdown=True
+                            )
+
+                            # Legal Agent Team
+                            st.session_state.legal_team = Agent(
+                                name="Legal Team Lead",
+                                role="Legal Team Coordinator",
+                                model=model,
+                                team=[legal_researcher, contract_analyst, legal_strategist, legal_chat_agent],
+                                knowledge=st.session_state.knowledge_base,
+                                search_knowledge=True,
+                                instructions=[
+                                    "Coordinate efforts between Legal Researcher, Contract Analyst, and Legal Strategist.",
+                                    "Synthesize findings from all team members to provide comprehensive insights.",
+                                    "Ensure all recommendations are well-sourced and referenced appropriately.",
+                                    "Refer to specific sections of the uploaded document as needed.",
+                                    "Utilize the knowledge base effectively before delegating tasks to team members."
+                                ],
+                                show_tool_calls=True,
+                                markdown=True
                             )
                         
-                        # Initialize agents
-                        legal_researcher = Agent(
-                            name="Legal Researcher",
-                            role="Legal Research Specialist",
-                            model=model,
-                            tools=[DuckDuckGo()],
-                            knowledge=st.session_state.knowledge_base,
-                            search_knowledge=True,
-                            instructions=[
-                                "Use DuckDuckGo to search relevant legal databases and external sources for applicable cases and precedents.",
-                                "Accurately cite all sources used.",
-                                "Provide concise summaries of findings.",
-                                "Reference specific sections of the uploaded document when relevant.",
-                                "You are giving final reports, do not give partial responses and ask follow up questions.",
-                                "Do not create your own sources, use only those provided by DuckDuckGo or the knowledge base."
-                            ],
-                            show_tool_calls=True,
-                            markdown=True
-                        )
-
-                        contract_analyst = Agent(
-                            name="Contract Analyst",
-                            role="Contract Analysis Specialist",
-                            model=model,
-                            knowledge=knowledge_base,
-                            search_knowledge=True,
-                            instructions=[
-                                "Thoroughly review the contract to identify key terms, obligations, and potential issues.",
-                                "Reference specific clauses from the uploaded document.",
-                                "You are giving final reports, do not give partial responses and ask follow up questions.",
-                                "Summarize findings in a clear and concise manner."
-                            ],
-                            markdown=True
-                        )
-
-                        legal_strategist = Agent(
-                            name="Legal Strategist", 
-                            role="Legal Strategy Specialist",
-                            model=model,
-                            knowledge=knowledge_base,
-                            search_knowledge=True,
-                            instructions=[
-                                "Develop strategic legal recommendations based on the document analysis.",
-                                "Provide actionable steps considering identified risks and opportunities.",
-                                "You are giving final reports, do not give partial responses and ask follow up questions.",
-                                "Ensure recommendations are supported by evidence from the document."
-                            ],
-                            markdown=True
-                        )
-
-                        # Add new Legal Chat Agent
-                        legal_chat_agent = Agent(
-                            name="Legal Chat Assistant",
-                            role="Interactive Legal Consultant",
-                            model=model,
-                            tools=[DuckDuckGo()],
-                            knowledge=knowledge_base,
-                            search_knowledge=True,
-                            instructions=[
-                                "Engage in interactive discussions about the analyzed document and its legal implications.",
-                                "Reference specific parts of the document and previous analysis when answering questions.",
-                                "Use DuckDuckGo to search for additional legal information when needed.",
-                                "Maintain context of the conversation and previous analyses.",
-                                "Provide clear, accurate responses with citations when applicable.",
-                                "Ask for clarification if a user's question is ambiguous."
-                            ],
-                            show_tool_calls=True,
-                            markdown=True
-                        )
-
-                        # Legal Agent Team
-                        st.session_state.legal_team = Agent(
-                            name="Legal Team Lead",
-                            role="Legal Team Coordinator",
-                            model=model,
-                            team=[legal_researcher, contract_analyst, legal_strategist, legal_chat_agent],
-                            knowledge=st.session_state.knowledge_base,
-                            search_knowledge=True,
-                            instructions=[
-                                "Coordinate efforts between Legal Researcher, Contract Analyst, and Legal Strategist.",
-                                "Synthesize findings from all team members to provide comprehensive insights.",
-                                "Ensure all recommendations are well-sourced and referenced appropriately.",
-                                "Refer to specific sections of the uploaded document as needed.",
-                                "Utilize the knowledge base effectively before delegating tasks to team members."
-                            ],
-                            show_tool_calls=True,
-                            markdown=True
-                        )
-                        
-                        st.success("✅ Document processed and team initialized!")
+                            st.success("✅ Document processed and team initialized!")
                             
                     except Exception as e:
                         st.error(f"Error processing document: {str(e)}")
@@ -357,7 +374,7 @@ def main():
             st.warning("Please configure all API credentials to proceed")
 
     # Main content area
-    if not all([st.session_state.openai_api_key, st.session_state.vector_db]):
+    if not is_mock_mode() and not all([st.session_state.openai_api_key, st.session_state.vector_db]):
         st.info("👈 Please configure your API credentials in the sidebar to begin")
     elif not uploaded_file:
         st.info("👈 Please upload a legal document to begin analysis")
@@ -421,8 +438,9 @@ def main():
             else:
                 with st.spinner("Analyzing document..."):
                     try:
-                        # Ensure OpenAI API key is set
-                        os.environ['OPENAI_API_KEY'] = st.session_state.openai_api_key
+                        # Ensure OpenAI API key is set in live mode
+                        if not is_mock_mode():
+                            os.environ['OPENAI_API_KEY'] = st.session_state.openai_api_key
                         
                         combined_query = build_analysis_prompt(
                             analysis_task=analysis_configs[analysis_type]["query"],
@@ -491,7 +509,11 @@ def main():
 
             # Initialize chat model if not already done
             if 'chat_model' not in st.session_state:
-                if st.session_state.selected_model == "claude-3-5-sonnet":
+                if is_mock_mode():
+                    st.session_state.chat_model = MockChatModel(
+                        st.session_state.knowledge_base
+                    )
+                elif st.session_state.selected_model == "claude-3-5-sonnet":
                     st.session_state.chat_model = Claude(
                         model=st.session_state.selected_model,
                         api_key=st.session_state.anthropic_api_key
