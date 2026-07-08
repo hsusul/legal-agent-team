@@ -13,13 +13,11 @@ import os
 import openai
 import anthropic
 from markitdown import MarkItDown
+from app.analysis import ANALYSIS_CONFIGS, AnalysisRequest, run_analysis_request
 from app.document_processing import write_upload_to_temp
 from app.mock_services import MockChatModel, MockLegalTeam, process_mock_document
 from app.prompts import (
-    build_analysis_prompt,
     build_chat_prompt,
-    build_considerations_prompt,
-    build_key_points_prompt,
 )
 from config import get_api_keys
 
@@ -391,33 +389,7 @@ def main():
         # Dynamic header with icon
         st.header(f"{analysis_icons[analysis_type]} {analysis_type} Analysis")
   
-        analysis_configs = {
-            "Contract Review": {
-                "query": "Review this contract and identify key terms, obligations, and potential issues.",
-                "agents": ["Contract Analyst"],
-                "description": "Detailed contract analysis focusing on terms and obligations"
-            },
-            "Legal Research": {
-                "query": "Research relevant cases and precedents related to this document.",
-                "agents": ["Legal Researcher"],
-                "description": "Research on relevant legal cases and precedents"
-            },
-            "Risk Assessment": {
-                "query": "Analyze potential legal risks and liabilities in this document.",
-                "agents": ["Contract Analyst", "Legal Strategist"],
-                "description": "Combined risk analysis and strategic assessment"
-            },
-            "Compliance Check": {
-                "query": "Check this document for regulatory compliance issues.",
-                "agents": ["Legal Researcher", "Contract Analyst", "Legal Strategist"],
-                "description": "Comprehensive compliance analysis"
-            },
-            "Custom Query": {
-                "query": None,
-                "agents": ["Legal Researcher", "Contract Analyst", "Legal Strategist"],
-                "description": "Custom analysis using all available agents"
-            }
-        }
+        analysis_configs = ANALYSIS_CONFIGS
 
         st.info(f"📋 {analysis_configs[analysis_type]['description']}")
         st.write(f"🤖 Active Legal AI Agents: {', '.join(analysis_configs[analysis_type]['agents'])}")  #dictionary!!
@@ -442,15 +414,23 @@ def main():
                         if not is_mock_mode():
                             os.environ['OPENAI_API_KEY'] = st.session_state.openai_api_key
                         
-                        combined_query = build_analysis_prompt(
-                            analysis_task=analysis_configs[analysis_type]["query"],
-                            focus_agents=analysis_configs[analysis_type]["agents"],
-                            user_query=user_query
-                            if analysis_type == "Custom Query"
-                            else None,
+                        analysis_result = run_analysis_request(
+                            AnalysisRequest(
+                                document_text=getattr(
+                                    st.session_state.knowledge_base,
+                                    "text_preview",
+                                    "",
+                                ),
+                                analysis_type=analysis_type,
+                                custom_query=user_query,
+                                app_mode="mock" if is_mock_mode() else "live",
+                            ),
+                            analysis_runner=None
+                            if is_mock_mode()
+                            else st.session_state.legal_team.run,
                         )
 
-                        response = st.session_state.legal_team.run(combined_query)
+                        response = analysis_result.response
                         st.session_state.analysis_response = response
                         
                         # Store the analysis state
@@ -469,12 +449,7 @@ def main():
                                         st.markdown(message.content)
                         
                         with st.session_state.analysis_tabs[1]:
-                            key_points_response = st.session_state.legal_team.run(
-                                build_key_points_prompt(
-                                    previous_analysis=response.content,
-                                    focus_agents=analysis_configs[analysis_type]["agents"],
-                                )
-                            )
+                            key_points_response = analysis_result.key_points_response
                             st.session_state.key_points_response = key_points_response
                             if key_points_response.content:
                                 st.markdown(key_points_response.content)
@@ -484,11 +459,8 @@ def main():
                                         st.markdown(message.content)
                         
                         with st.session_state.analysis_tabs[2]:
-                            recommendations_response = st.session_state.legal_team.run(
-                                build_considerations_prompt(
-                                    previous_analysis=response.content,
-                                    focus_agents=analysis_configs[analysis_type]["agents"],
-                                )
+                            recommendations_response = (
+                                analysis_result.considerations_response
                             )
                             st.session_state.recommendations_response = recommendations_response
                             if recommendations_response.content:

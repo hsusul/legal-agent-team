@@ -1,0 +1,22 @@
+Sample Services Agreement
+
+This sample agreement is provided for local software demos only. It is not a
+real contract and should not be used as legal advice.
+
+1. Parties. Example Client LLC hires Example Vendor Inc. to provide project
+planning and documentation services.
+
+2. Term. The agreement starts on January 1, 2026 and ends on March 31, 2026
+unless both parties agree in writing to extend it.
+
+3. Fees. Example Client LLC will pay Example Vendor Inc. a fixed demo fee of
+$1,000 within 30 days after receiving an invoice.
+
+4. Confidentiality. Each party will use reasonable care to protect non-public
+business information received from the other party.
+
+5. Termination. Either party may terminate this sample agreement with 10 days'
+written notice.
+
+6. Disclaimer. This document is fictional, simplified, and intended only for
+testing the mock analysis workflow.
